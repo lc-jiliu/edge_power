@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EdgePower — Operational Intelligence Dashboard</title>
+<style>
+  :root {
+    --bg:        #0f1117;
+    --panel:     #1a1d27;
+    --border:    #2a2d3a;
+    --text:      #e2e8f0;
+    --muted:     #8892a4;
+    --accent:    #3b82f6;
+    --critical:  #ef4444;
+    --warning:   #f59e0b;
+    --normal:    #22c55e;
+    --online:    #22c55e;
+    --degraded:  #f59e0b;
+    --offline:   #ef4444;
+    --code-bg:   #0d1117;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 13px;
+    min-height: 100vh;
+  }
+
+  /* ── Header ──────────────────────────────────────────────── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { font-size: 16px; font-weight: 700; color: var(--accent); letter-spacing: 0.05em; }
+  .brand span { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 8px; }
+  #conn-status {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--muted);
+  }
+  #conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--offline); }
+  #conn-dot.connected { background: var(--online); }
+
+  /* ── Node status bar ─────────────────────────────────────── */
+  #node-bar {
+    display: flex; gap: 12px; padding: 10px 20px;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .node-card {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 12px; border-radius: 6px;
+    background: var(--bg); border: 1px solid var(--border);
+    min-width: 160px;
+  }
+  .node-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .node-dot.online   { background: var(--online);   box-shadow: 0 0 6px var(--online); }
+  .node-dot.degraded { background: var(--degraded); box-shadow: 0 0 6px var(--degraded); animation: pulse 1.5s infinite; }
+  .node-dot.offline  { background: var(--offline); }
+  .node-name { font-weight: 600; font-size: 12px; }
+  .node-meta { color: var(--muted); font-size: 11px; }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* ── Main layout ─────────────────────────────────────────── */
+  main {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    grid-template-rows: auto 1fr;
+    gap: 0;
+    height: calc(100vh - 90px);
+  }
+
+  /* ── Panels ──────────────────────────────────────────────── */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .panel-header {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .panel-title { font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .panel-count { font-size: 11px; color: var(--accent); background: rgba(59,130,246,0.12); padding: 2px 8px; border-radius: 10px; }
+  .panel-body { overflow-y: auto; flex: 1; }
+
+  /* ── Event feed ──────────────────────────────────────────── */
+  #event-feed-panel { grid-column: 1; grid-row: 1 / 3; border-right: none; }
+  .event-row {
+    display: grid;
+    grid-template-columns: 80px 70px 90px 80px 80px 1fr;
+    gap: 8px;
+    padding: 7px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    align-items: center;
+    font-size: 12px;
+    animation: fadeIn 0.3s ease;
+  }
+  .event-row:hover { background: rgba(255,255,255,0.03); }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+
+  .event-row.CRITICAL { border-left: 3px solid var(--critical); }
+  .event-row.WARNING  { border-left: 3px solid var(--warning); }
+  .event-row.NORMAL   { border-left: 3px solid transparent; }
+
+  .badge {
+    display: inline-block; padding: 1px 7px; border-radius: 10px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .badge.CRITICAL { background: rgba(239,68,68,0.15);  color: var(--critical); }
+  .badge.WARNING  { background: rgba(245,158,11,0.15); color: var(--warning); }
+  .badge.NORMAL   { background: rgba(34,197,94,0.08);  color: var(--normal); }
+
+  .feed-header {
+    display: grid;
+    grid-template-columns: 80px 70px 90px 80px 80px 1fr;
+    gap: 8px; padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--muted); position: sticky; top: 0; background: var(--panel); z-index: 1;
+  }
+
+  .mono { font-family: 'Courier New', monospace; }
+  .val  { font-weight: 600; }
+  .eq   { color: var(--accent); font-size: 11px; }
+  .site { color: var(--muted); }
+  .ts   { color: var(--muted); font-size: 10px; }
+
+  /* ── Right column ────────────────────────────────────────── */
+  .right-col { grid-column: 2; display: flex; flex-direction: column; }
+
+  /* ── Alert panel ─────────────────────────────────────────── */
+  #alert-panel { flex: 1; overflow: hidden; display: flex; flex-direction: column; border-left: 1px solid var(--border); }
+  .alert-item {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    animation: fadeIn 0.3s ease;
+  }
+  .alert-item.CRITICAL { border-left: 3px solid var(--critical); }
+  .alert-item.WARNING  { border-left: 3px solid var(--warning); }
+  .alert-header { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+  .alert-eq     { font-weight: 600; font-size: 12px; }
+  .alert-ts     { color: var(--muted); font-size: 10px; margin-left: auto; }
+  .alert-sensor { color: var(--muted); font-size: 11px; margin-bottom: 6px; }
+  .alert-summary {
+    background: var(--code-bg); border-radius: 5px; padding: 8px 10px;
+    font-size: 11px; line-height: 1.6; color: #c8d3e0; margin-top: 6px;
+    border: 1px solid var(--border);
+  }
+  .alert-summary .loading { color: var(--muted); font-style: italic; }
+  .alert-action {
+    display: inline-block; margin-top: 6px;
+    font-size: 10px; color: var(--accent);
+    background: rgba(59,130,246,0.1); padding: 2px 8px; border-radius: 10px;
+  }
+  .no-alerts { padding: 24px; text-align: center; color: var(--muted); font-size: 12px; }
+
+  /* ── Stats bar ───────────────────────────────────────────── */
+  #stats-bar {
+    display: flex; gap: 0;
+    border-top: 1px solid var(--border);
+    border-left: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .stat {
+    flex: 1; padding: 10px 12px; text-align: center;
+    border-right: 1px solid var(--border);
+  }
+  .stat:last-child { border-right: none; }
+  .stat-val { font-size: 22px; font-weight: 700; }
+  .stat-lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+  .stat-val.critical { color: var(--critical); }
+  .stat-val.warning  { color: var(--warning); }
+  .stat-val.normal   { color: var(--normal); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <span class="brand">EdgePower<span>Operational Intelligence Dashboard</span></span>
+  </div>
+  <div id="conn-status">
+    <div id="conn-dot"></div>
+    <span id="conn-label">Connecting…</span>
+  </div>
+</header>
+
+<!-- Node status bar -->
+<div id="node-bar">
+  <div style="color:var(--muted);font-size:11px;line-height:32px">Waiting for nodes…</div>
+</div>
+
+<main>
+  <!-- Event feed -->
+  <div class="panel" id="event-feed-panel">
+    <div class="panel-header">
+      <span class="panel-title">Live Event Feed</span>
+      <span class="panel-count" id="feed-count">0 events</span>
+    </div>
+    <div class="feed-header">
+      <span>Time</span>
+      <span>Severity</span>
+      <span>Equipment</span>
+      <span>Site</span>
+      <span>Sensor</span>
+      <span>Value</span>
+    </div>
+    <div class="panel-body" id="event-feed"></div>
+  </div>
+
+  <!-- Right column: alerts + stats -->
+  <div class="right-col">
+    <div class="panel" id="alert-panel">
+      <div class="panel-header">
+        <span class="panel-title">Alerts & AI Diagnostics</span>
+        <span class="panel-count" id="alert-count">0 alerts</span>
+      </div>
+      <div class="panel-body" id="alert-list">
+        <div class="no-alerts">No alerts yet — system monitoring…</div>
+      </div>
+    </div>
+
+    <div id="stats-bar">
+      <div class="stat">
+        <div class="stat-val critical" id="stat-critical">0</div>
+        <div class="stat-lbl">Critical</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val warning" id="stat-warning">0</div>
+        <div class="stat-lbl">Warning</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val normal" id="stat-normal">0</div>
+        <div class="stat-lbl">Normal</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val" id="stat-total" style="color:var(--accent)">0</div>
+        <div class="stat-lbl">Total</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────
+const MAX_FEED_ROWS = 200;
+const MAX_ALERTS    = 50;
+
+let counts   = { CRITICAL: 0, WARNING: 0, NORMAL: 0, total: 0 };
+let nodes    = {};           // site_id → { status, last_seen }
+let alerts   = {};           // event_id → DOM element
+let alertSeq = 0;
+
+// ── WebSocket ─────────────────────────────────────────────────────────────
+let ws;
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/dashboard`);
+
+  ws.onopen = () => {
+    document.getElementById('conn-dot').classList.add('connected');
+    document.getElementById('conn-label').textContent = 'Connected';
+  };
+
+  ws.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    if      (msg.type === 'event')       handleEvent(msg.data);
+    else if (msg.type === 'summary')     handleSummary(msg.data);
+    else if (msg.type === 'node_status') handleNodeStatus(msg.data);
+  };
+
+  ws.onclose = () => {
+    document.getElementById('conn-dot').classList.remove('connected');
+    document.getElementById('conn-label').textContent = 'Reconnecting…';
+    setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => ws.close();
+
+  // Keepalive ping every 15s
+  setInterval(() => { if (ws.readyState === 1) ws.send('ping'); }, 15000);
+}
+
+// ── Event handler ─────────────────────────────────────────────────────────
+function handleEvent(d) {
+  const sev = d.severity || 'NORMAL';
+  counts[sev] = (counts[sev] || 0) + 1;
+  counts.total++;
+  updateStats();
+
+  // Add row to feed
+  const feed = document.getElementById('event-feed');
+  const row  = document.createElement('div');
+  row.className = `event-row ${sev}`;
+  row.innerHTML = `
+    <span class="ts mono">${fmtTime(d.timestamp)}</span>
+    <span><span class="badge ${sev}">${sev}</span></span>
+    <span class="eq">${d.equipment_id}</span>
+    <span class="site">${d.site_id}</span>
+    <span>${d.sensor_type}</span>
+    <span class="val mono">${Number(d.value).toFixed(2)} <span style="color:var(--muted);font-size:10px">${''}</span></span>
+  `;
+  feed.insertBefore(row, feed.firstChild);
+  while (feed.children.length > MAX_FEED_ROWS) feed.removeChild(feed.lastChild);
+
+  // Update count
+  document.getElementById('feed-count').textContent =
+    `${Math.min(counts.total, MAX_FEED_ROWS)} events`;
+
+  // Show alert for CRITICAL / WARNING
+  if (sev === 'CRITICAL' || sev === 'WARNING') addAlert(d);
+}
+
+// ── Alert panel ───────────────────────────────────────────────────────────
+function addAlert(d) {
+  const list = document.getElementById('alert-list');
+  // Remove "no alerts" placeholder
+  const placeholder = list.querySelector('.no-alerts');
+  if (placeholder) placeholder.remove();
+
+  const item = document.createElement('div');
+  item.className = `alert-item ${d.severity}`;
+  item.id = `alert-${d.event_id}`;
+  item.innerHTML = `
+    <div class="alert-header">
+      <span class="badge ${d.severity}">${d.severity}</span>
+      <span class="alert-eq">${d.equipment_id}</span>
+      <span class="alert-ts">${fmtTime(d.timestamp)}</span>
+    </div>
+    <div class="alert-sensor">${d.site_id} · ${d.sensor_type} = <strong>${Number(d.value).toFixed(3)}</strong> · score ${Number(d.anomaly_score).toFixed(3)}</div>
+    <div class="alert-summary" id="summary-${d.event_id}">
+      <span class="loading">⏳ Awaiting AI diagnosis…</span>
+    </div>
+  `;
+  list.insertBefore(item, list.firstChild);
+
+  alerts[d.event_id] = item;
+  alertSeq++;
+  document.getElementById('alert-count').textContent = `${alertSeq} alerts`;
+
+  // Trim old alerts
+  while (list.children.length > MAX_ALERTS) list.removeChild(list.lastChild);
+}
+
+// ── AI summary handler ────────────────────────────────────────────────────
+function handleSummary(d) {
+  const summaryEl = document.getElementById(`summary-${d.event_id}`);
+  if (!summaryEl) return;
+  summaryEl.innerHTML = `
+    <div>${escapeHtml(d.summary)}</div>
+    <div class="alert-action">→ ${escapeHtml(d.action)}</div>
+  `;
+}
+
+// ── Node status ───────────────────────────────────────────────────────────
+function handleNodeStatus(d) {
+  nodes[d.site_id] = d;
+  renderNodeBar();
+}
+
+function renderNodeBar() {
+  const bar = document.getElementById('node-bar');
+  if (Object.keys(nodes).length === 0) return;
+  bar.innerHTML = '';
+  for (const [site_id, n] of Object.entries(nodes)) {
+    const card = document.createElement('div');
+    card.className = 'node-card';
+    const age = n.last_seen ? timeSince(n.last_seen) : '—';
+    card.innerHTML = `
+      <div class="node-dot ${n.status}"></div>
+      <div>
+        <div class="node-name">${site_id}</div>
+        <div class="node-meta">${n.status} · last: ${age}</div>
+      </div>
+    `;
+    bar.appendChild(card);
+  }
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────────
+function updateStats() {
+  document.getElementById('stat-critical').textContent = counts.CRITICAL || 0;
+  document.getElementById('stat-warning').textContent  = counts.WARNING  || 0;
+  document.getElementById('stat-normal').textContent   = counts.NORMAL   || 0;
+  document.getElementById('stat-total').textContent    = counts.total;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function fmtTime(ts) {
+  if (!ts) return '—';
+  try {
+    const d = new Date(ts);
+    return d.toLocaleTimeString('en-US', { hour12: false,
+      hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch { return ts.slice(11, 19) || '—'; }
+}
+
+function timeSince(ts) {
+  const sec = Math.floor((Date.now() - new Date(ts)) / 1000);
+  if (sec < 5)  return 'just now';
+  if (sec < 60) return `${sec}s ago`;
+  return `${Math.floor(sec/60)}m ago`;
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Update node "last seen" times every 5 seconds
+setInterval(renderNodeBar, 5000);
+
+connect();
+</script>
+</body>
+</html>

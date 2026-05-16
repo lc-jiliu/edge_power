@@ -1,0 +1,110 @@
+version: "3.9"
+
+services:
+  # ── Site A ─────────────────────────────────────────────────
+  redis-1:
+    image: redis:7-alpine
+    networks: [edge-net-1]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  edge-node-1:
+    build: ./edge
+    environment:
+      SITE_ID: site-a
+      REDIS_URL: redis://redis-1:6379
+      CLOUD_WS_URL: ws://cloud-backend:8000/edge/site-a
+      DB_PATH: /data/site-a.db
+      SIM_RATE: "0.1"          # seconds between simulator ticks (10 events/sec)
+      BATCH_INTERVAL: "60"     # seconds between WARNING batch flushes
+    volumes:
+      - edge-data-1:/data
+    networks: [edge-net-1, cloud-net]
+    ports: ["8001:8000"]       # expose for demo curl commands
+    depends_on:
+      redis-1:
+        condition: service_healthy
+
+  # ── Site B ─────────────────────────────────────────────────
+  redis-2:
+    image: redis:7-alpine
+    networks: [edge-net-2]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  edge-node-2:
+    build: ./edge
+    environment:
+      SITE_ID: site-b
+      REDIS_URL: redis://redis-2:6379
+      CLOUD_WS_URL: ws://cloud-backend:8000/edge/site-b
+      DB_PATH: /data/site-b.db
+      SIM_RATE: "0.1"
+      BATCH_INTERVAL: "60"
+    volumes:
+      - edge-data-2:/data
+    networks: [edge-net-2, cloud-net]
+    ports: ["8002:8000"]
+    depends_on:
+      redis-2:
+        condition: service_healthy
+
+  # ── AI Governance ──────────────────────────────────────────
+  lobster-trap:
+    image: ghcr.io/veeainc/lobstertrap:latest
+    volumes:
+      - ./lobster-trap/config.yaml:/etc/lobstertrap/config.yaml:ro
+      - lt-logs:/var/log/lobster-trap
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    networks: [cloud-net]
+    ports: ["8080:8080"]
+
+  # ── Cloud Hub ──────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: edgepower
+      POSTGRES_USER: edgepower
+      POSTGRES_PASSWORD: edgepower
+    volumes: [pg-data:/var/lib/postgresql/data]
+    networks: [cloud-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U edgepower"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  cloud-backend:
+    build: ./cloud
+    environment:
+      DATABASE_URL: postgresql://edgepower:edgepower@postgres:5432/edgepower
+      LOBSTER_TRAP_URL: http://lobster-trap:8080
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: gemini-2.0-flash
+      HEARTBEAT_YELLOW_S: "30"
+      HEARTBEAT_RED_S: "120"
+    networks: [cloud-net]
+    ports: ["8000:8000"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+# ── Networks ────────────────────────────────────────────────
+networks:
+  edge-net-1: {}   # Site A isolated — redis-1 + edge-node-1 only
+  edge-net-2: {}   # Site B isolated — redis-2 + edge-node-2 only
+  cloud-net:  {}   # Central hub — cloud-backend, lobster-trap, postgres
+
+# ── Volumes ─────────────────────────────────────────────────
+volumes:
+  edge-data-1: {}   # SQLite persistence — Site A
+  edge-data-2: {}   # SQLite persistence — Site B
+  pg-data:     {}   # PostgreSQL data
+  lt-logs:     {}   # Lobster Trap audit logs

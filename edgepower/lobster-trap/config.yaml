@@ -1,0 +1,26 @@
+# Lobster Trap — AI Governance Proxy Configuration
+# https://github.com/veeainc/lobstertrap
+
+backend:
+  url: "https://generativelanguage.googleapis.com/v1beta"
+  key_env: "GEMINI_API_KEY"
+
+rules:
+  - name: "no-credentials"
+    match: "password|api_key|secret_key|bearer|private_key|access_token"
+    action: block
+
+  - name: "no-pii"
+    match: "ssn|social.security|date.of.birth|passport.number|credit.card"
+    action: block
+
+  - name: "no-exfiltration"
+    match: "send.*email|upload.*to|post.*to.*http|wget|curl -X POST"
+    action: flag
+
+  - name: "no-prompt-injection"
+    match: "ignore.previous|disregard.instructions|you.are.now|new.persona"
+    action: block
+
+audit_log: "/var/log/lobster-trap/audit.jsonl"
+log_level: "info"
